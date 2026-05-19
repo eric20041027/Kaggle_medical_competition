@@ -83,7 +83,7 @@ BATCH_SIZE   = 8  if _is_a100 else 4
 GRAD_ACCUM   = 8  if _is_a100 else 16   # effective batch = 64
 N_FOLDS      = 2                         # 2 fold 足夠 ensemble 使用
 EPOCHS       = 8
-LR           = 2e-5
+LR           = 5e-6
 WARMUP_RATIO = 0.10
 LABEL_SMOOTH = 0.1
 PATIENCE     = 3
