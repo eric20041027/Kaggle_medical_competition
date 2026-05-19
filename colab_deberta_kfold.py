@@ -82,7 +82,7 @@ BATCH_SIZE   = 8  if _is_a100 else 4
 GRAD_ACCUM   = 8  if _is_a100 else 16   # effective batch = 64
 N_FOLDS      = 2                         # 2 fold 足夠 ensemble 使用
 EPOCHS       = 8
-LR           = 5e-6
+LR           = 2e-5
 WARMUP_RATIO = 0.10
 LABEL_SMOOTH = 0.1
 PATIENCE     = 3
@@ -290,7 +290,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(all_texts, all_labels)):
     oof_probs[val_idx]  = get_probs(model, val_loader,  desc=f"OOF  Fold{fold+1}")
     test_probs         += get_probs(model, test_loader, desc=f"Test Fold{fold+1}") / N_FOLDS
 
-    del model, base_model, optimizer, scheduler, scaler, loss_fn
+    del model, base_model, optimizer, scheduler, loss_fn
     del train_ds, val_ds, train_loader, val_loader
     torch.cuda.empty_cache()
     gc.collect()
