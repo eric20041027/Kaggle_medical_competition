@@ -178,9 +178,11 @@ skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
 
 
 def build_model():
-    base = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, num_labels=5)
+    base = AutoModelForSequenceClassification.from_pretrained(
+        MODEL_NAME, num_labels=5, torch_dtype=torch.float32
+    )
     # gradient_checkpointing 與 AMP 在 DeBERTa 上會產生 FP16 梯度衝突，不啟用
-    # BATCH_SIZE=4 + AMP 在 T4 16GB 上已足夠省記憶體
+    # BATCH_SIZE=4 + FP32 在 T4 16GB 上已足夠省記憶體
     if N_GPUS > 1:
         m = nn.DataParallel(base)
     else:
