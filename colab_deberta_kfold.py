@@ -80,7 +80,7 @@ MAX_LEN      = 384
 _is_a100     = torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory > 30e9
 BATCH_SIZE   = 8  if _is_a100 else 4
 GRAD_ACCUM   = 8  if _is_a100 else 16   # effective batch = 64
-N_FOLDS      = 3  if _is_a100 else 2    # A100 夠快跑 3 fold
+N_FOLDS      = 2                         # 2 fold 足夠 ensemble 使用
 EPOCHS       = 8
 LR           = 5e-6
 WARMUP_RATIO = 0.10
