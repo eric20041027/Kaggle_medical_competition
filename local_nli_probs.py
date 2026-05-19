@@ -21,7 +21,7 @@ from tqdm import tqdm
 TRAIN_PATH  = "kaggle_trainset.csv"
 TEST_PATH   = "kaggle_testset.csv"
 OUTPUT_DIR  = "."
-BATCH_SIZE  = 32   # CPU 用 8，GPU 可用 32
+BATCH_SIZE  = 16   # CPU 用 8，GPU 可用 16（T4 zero-shot 5-label 時 batch*5 會放大記憶體用量）
 MODEL_NAME  = "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli"
 
 LABEL_STR_LIST = [
