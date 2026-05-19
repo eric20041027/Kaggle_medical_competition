@@ -66,8 +66,9 @@ OUTPUT_DIR = _DRIVE_DIR if os.path.exists("/content/drive/MyDrive") else _LOCAL_
 
 DEVICE  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 N_GPUS  = torch.cuda.device_count()
-# BF16：A100/V100 原生支援，不需要 GradScaler，避開 DeBERTa FP16 梯度問題
-USE_BF16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+# DeBERTa-v3 disentangled attention 在 BF16 下梯度精度不足（梯度近似 0），
+# 導致模型完全無法收斂。即使 A100 支援 BF16 也必須強制 FP32。
+USE_BF16 = False
 print(f"Device: {DEVICE}  |  GPUs: {N_GPUS}  |  BF16: {USE_BF16}")
 if torch.cuda.is_available():
     for i in range(N_GPUS):
