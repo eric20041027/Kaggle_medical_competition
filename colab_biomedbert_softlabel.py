@@ -80,8 +80,8 @@ LABEL_SMOOTH   = 0.1
 VAL_RATIO      = 0.2
 PATIENCE       = 2
 FGM_EPSILON    = 1.0
-CLASS5_BOOST   = 2.5   # class 5 的 class weight 額外乘以 2.5x
-CLASS5_INF_MUL = 1.9   # 推論時 class 5 機率乘以 1.9x
+CLASS5_BOOST   = 1.0   # 不額外 boost，軟標籤本身已修正 class5 訓練信號
+CLASS5_INF_MUL = 1.0   # 不套用推論乘數，避免雙重 boost
 SEED           = 42
 
 print(f"BATCH_SIZE={BATCH_SIZE}  GRAD_ACCUM={GRAD_ACCUM}  MAX_LEN={MAX_LEN}")
