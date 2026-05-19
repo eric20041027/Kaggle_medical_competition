@@ -39,7 +39,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import AdamW
-from torch.cuda.amp import autocast, GradScaler
+from torch.cuda.amp import GradScaler  # kept for reference, not used in BF16/FP32 path
 from transformers import (
     AutoTokenizer,
     AutoModelForSequenceClassification,
@@ -66,23 +66,25 @@ OUTPUT_DIR = _DRIVE_DIR if os.path.exists("/content/drive/MyDrive") else _LOCAL_
 
 DEVICE  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 N_GPUS  = torch.cuda.device_count()
-USE_AMP = False  # DeBERTa-v3 disentangled attention produces FP16 grads, incompatible with GradScaler
-print(f"Device: {DEVICE}  |  GPUs: {N_GPUS}  |  AMP: {USE_AMP}")
+# BF16：A100/V100 原生支援，不需要 GradScaler，避開 DeBERTa FP16 梯度問題
+USE_BF16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+print(f"Device: {DEVICE}  |  GPUs: {N_GPUS}  |  BF16: {USE_BF16}")
 if torch.cuda.is_available():
     for i in range(N_GPUS):
         mem = torch.cuda.get_device_properties(i).total_memory / 1e9
         print(f"  GPU {i}: {torch.cuda.get_device_name(i)}  ({mem:.1f} GB)")
 
-# ── Colab T4 (16GB) 調整：BATCH_SIZE=4 保留記憶體空間 ──────────
+# ── A100 (40GB) 最佳化；T4 fallback 維持 BATCH_SIZE=4 ──────────
 MODEL_NAME   = "microsoft/deberta-v3-large"
 MAX_LEN      = 384
-BATCH_SIZE   = 4          # T4 單卡 16GB：4 比 8 更安全
-GRAD_ACCUM   = 16         # effective batch = 4×16 = 64（與 Kaggle 版一致）
+_is_a100     = torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory > 30e9
+BATCH_SIZE   = 8  if _is_a100 else 4
+GRAD_ACCUM   = 8  if _is_a100 else 16   # effective batch = 64
+N_FOLDS      = 3  if _is_a100 else 2    # A100 夠快跑 3 fold
 EPOCHS       = 8
 LR           = 5e-6
 WARMUP_RATIO = 0.10
 LABEL_SMOOTH = 0.1
-N_FOLDS      = 2          # 免費 Colab 4h20m 限制：3fold≈4.5h，2fold≈3h 安全
 PATIENCE     = 3
 SEED         = 42
 
@@ -198,7 +200,7 @@ def get_probs(model, loader, desc=""):
     for batch in tqdm(loader, desc=desc, leave=False):
         ids  = batch["input_ids"].to(DEVICE)
         mask = batch["attention_mask"].to(DEVICE)
-        with autocast(enabled=USE_AMP):
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=USE_BF16):
             logits = model(input_ids=ids, attention_mask=mask).logits
         probs = torch.softmax(logits, dim=-1)
         all_probs.append(probs.cpu().numpy())
@@ -237,8 +239,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(all_texts, all_labels)):
     scheduler    = get_cosine_schedule_with_warmup(
         optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
     )
-    scaler = GradScaler(enabled=USE_AMP)
-
+    # BF16 不需要 GradScaler（動態範圍足夠），FP32 fallback 同樣不需要
     best_f1    = 0.0
     no_improve = 0
     best_path  = os.path.join(OUTPUT_DIR, f"deberta_fold{fold+1}.pt")
@@ -253,16 +254,14 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(all_texts, all_labels)):
             ids  = batch["input_ids"].to(DEVICE)
             mask = batch["attention_mask"].to(DEVICE)
             lbls = batch["labels"].to(DEVICE)
-            with autocast(enabled=USE_AMP):
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=USE_BF16):
                 logits = model(input_ids=ids, attention_mask=mask).logits
-                loss   = loss_fn(logits, lbls) / GRAD_ACCUM
-            scaler.scale(loss).backward()
+            loss = loss_fn(logits.float(), lbls) / GRAD_ACCUM  # float32 for stable loss
+            loss.backward()
             total_loss += loss.item() * GRAD_ACCUM
             if (step + 1) % GRAD_ACCUM == 0:
-                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(base_model.parameters(), 1.0)
-                scaler.step(optimizer)
-                scaler.update()
+                optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
             pbar.set_postfix({"loss": f"{total_loss / (step + 1):.4f}"})
