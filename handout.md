@@ -58,18 +58,18 @@ df_clean = df_no_conflict.drop_duplicates(subset="condition").reset_index(drop=T
 
 ## 3. 實驗進程與成績
 
-| Phase | 方法 | Val Macro F1 | 腳本 |
-|-------|------|-------------|------|
-| Phase 1 | Zero-shot NLI（BART-large-MNLI） | 0.5930 | `phase1_baseline.py` |
-| Phase 1 | Similarity-based（S-PubMedBert） | 0.4708 | `phase1_baseline.py` |
-| Phase 2 | DeBERTa-v3-large NLI（v4_contrast） | 0.6001 | `phase2_label_engineering.py` |
-| Phase 2 | bge-large-en-v1.5 SBERT（v3_sentences） | 0.5655 | `phase2_label_engineering.py` |
-| Phase 2 | Ensemble（w_A=0.3, w_B=0.7） | 0.6102 | `phase2_label_engineering.py` |
-| Phase 4 v1 | BiomedBERT-base Fine-tune（LR=2e-5，Epoch 1 就過擬合） | 0.6397 | `phase4_finetune_base_v1.py` |
-| Phase 5 | Phase4 + Phase2 Ensemble | **0.6643** | `phase5_ensemble_submit.py` |
-| Kaggle | BiomedBERT-large（T4×2，單模型） | 0.6558 | `kaggle_large_single.py` |
+| Phase | 方法 | OOF / Val F1 | Kaggle LB | 腳本 |
+|-------|------|-------------|-----------|------|
+| Phase 1 | Zero-shot NLI（BART-large-MNLI） | 0.5930 | — | `phase1_baseline.py` |
+| Phase 1 | Similarity-based（S-PubMedBert） | 0.4708 | — | `phase1_baseline.py` |
+| Phase 2 | Ensemble（DeBERTa+bge-large） | 0.6102 | — | `phase2_label_engineering.py` |
+| Phase 4 v1 | BiomedBERT-base Fine-tune | 0.6397 | — | `phase4_finetune_base_v1.py` |
+| Phase 5 | Phase4 + Phase2 Ensemble | 0.6643 | **0.6643** | `phase5_ensemble_submit.py` |
+| Kaggle v1 | BiomedBERT-large 單模型 | — | 0.6558 | `kaggle_large_single.py` |
+| Kaggle KFold v1 | BiomedBERT-large 3-Fold（清洗資料） | OOF=0.818 | **0.574** ← 異常低 | `kaggle_large_kfold.py` |
 
 **目前最佳提交：0.6643（Phase 5 Ensemble）**
+**KFold v1 LB 異常原因：訓練只用 7,995 乾淨樣本，OOF 虛高，test 遇困難樣本大幅下降**
 **目標：≥ 0.796（前 8 名）**
 
 ---
@@ -191,29 +191,24 @@ torch.cuda.empty_cache(); gc.collect()
 
 ## 7. 下一步建議（按優先順序）
 
-### 高優先
+### 高優先（已建立腳本）
 
-1. **執行 `kaggle_large_kfold.py`（Kaggle T4×2）**
-   - 預期 OOF F1 ≈ 0.68–0.72（K-Fold + 清洗資料 + large 模型）
-   - 是目前最有潛力的單一策略
+1. **執行 `kaggle_large_kfold_v2.py`（Kaggle T4×2）**
+   - 改進點：多數投票保留衝突文本（7,995 → ~9,800）、MAX_LEN=384、PATIENCE=3、EPOCHS=8
+   - 解決 v1 的 OOF/LB 落差問題
 
-2. **執行 `local_base_kfold.py`（本地 RTX 3060）**
-   - 驗證 K-Fold 效果，取得本地 OOF/submission npy 供 ensemble 用
+2. **執行 `kaggle_deberta_kfold.py`（Kaggle T4×2，第二個 Notebook）**
+   - 模型：`microsoft/deberta-v3-large`，不同架構 → 互補錯誤
+   - 輸出 `test_probs_deberta.npy` 供 ensemble
+
+3. **執行 `kaggle_ensemble_v2.py`**
+   - 合併兩模型軟機率，OOF grid search 最佳權重，生成 `submission_ensemble_v2.csv`
 
 ### 中優先
 
-3. **跨模型 Ensemble**：將 BiomedBERT-large K-Fold 的 `test_probs.npy` 與 Phase2 無監督 soft scores ensemble
-   - 參考 `phase5_ensemble_submit.py` 的 grid search 邏輯
+4. **Pseudo-labeling**：用 ensemble 高信心（max prob > 0.95）的 test 預測加回訓練集再訓練
 
-4. **嘗試 DeBERTa-v3-large 監督微調**
-   - `MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli` 直接 fine-tune（5 分類）
-   - 與 BiomedBERT ensemble 預期有互補效果
-
-### 低優先
-
-5. **MAX_LEN 512 實驗**：目前 256，文本平均 ~220 tokens，改 512 可能些微提升
-
-6. **Pseudo-labeling**：用高信心（max prob > 0.95）的 test 預測加回訓練集再訓練
+5. **MAX_LEN 512**：若 T4 時間允許，試試 512 對長尾文本的影響
 
 ---
 
