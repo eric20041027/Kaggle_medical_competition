@@ -46,7 +46,7 @@ from transformers import (
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, classification_report
 from sklearn.utils.class_weight import compute_class_weight
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 warnings.filterwarnings("ignore")
 
