@@ -73,12 +73,12 @@ MAX_LEN        = 512
 _is_a100       = torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory > 30e9
 BATCH_SIZE     = 16 if _is_a100 else 8
 GRAD_ACCUM     = 4  if _is_a100 else 8
-EPOCHS         = 10
+EPOCHS         = 6
 LR             = 8e-6
 WARMUP_RATIO   = 0.20
 LABEL_SMOOTH   = 0.1
 VAL_RATIO      = 0.2
-PATIENCE       = 3
+PATIENCE       = 2
 FGM_EPSILON    = 1.0
 CLASS5_BOOST   = 2.5   # class 5 的 class weight 額外乘以 2.5x
 CLASS5_INF_MUL = 1.9   # 推論時 class 5 機率乘以 1.9x
@@ -389,23 +389,17 @@ vl_texts = [all_texts[i]       for i in vl_idx]
 vl_soft  = [all_soft_labels[i] for i in vl_idx]
 vl_hard  = [all_hard_labels[i] for i in vl_idx]
 
-print(f"\nPhase 1  Train: {len(tr_texts)}  Val: {len(vl_texts)}")
+print(f"\nTrain: {len(tr_texts)}  Val: {len(vl_texts)}")
 
-# ── Phase 1：val split 找最佳 epoch ──────────────────────────────────
-_, _, best_epoch = train_phase(
-    "Phase1", tr_texts, tr_soft, tr_hard, vl_texts, vl_soft, vl_hard
+# ── 單階段訓練（val split，早停後直接推論）────────────────────────────
+_, best_model, best_epoch = train_phase(
+    "Training", tr_texts, tr_soft, tr_hard, vl_texts, vl_soft, vl_hard
 )
-print(f"\n最佳 epoch = {best_epoch}，Phase 2 全量訓練 {best_epoch} epoch")
-
-# ── Phase 2：全量訓練（固定最佳 epoch）────────────────────────────────
-_, full_model, _ = train_phase(
-    "Phase2", all_texts, all_soft_labels, all_hard_labels, [], [], [],
-    fixed_epochs=best_epoch
-)
+print(f"\n最佳 epoch = {best_epoch}，直接使用此模型推論（節省時間）")
 
 # ── 推論（class 5 × 1.9）────────────────────────────────────────────
 print("\n推論測試集 ...")
-test_probs     = get_probs(full_model, test_loader, desc="Test")
+test_probs     = get_probs(best_model, test_loader, desc="Test")
 test_probs_adj = test_probs.copy()
 test_probs_adj[:, 4] *= CLASS5_INF_MUL
 test_pred_submit = [IDX_TO_SUBMIT[i] for i in test_probs_adj.argmax(axis=1)]
