@@ -236,7 +236,15 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(all_texts, all_labels)):
 
     total_steps  = (len(train_loader) // GRAD_ACCUM) * EPOCHS
     warmup_steps = int(total_steps * WARMUP_RATIO)
-    optimizer    = AdamW(base_model.parameters(), lr=LR, weight_decay=0.01)
+    # DeBERTa 標準 fine-tune：bias / LayerNorm 不套 weight_decay
+    no_decay = ["bias", "LayerNorm.weight", "layernorm.weight"]
+    optimizer_grouped_parameters = [
+        {"params": [p for n, p in base_model.named_parameters()
+                    if not any(nd in n for nd in no_decay)], "weight_decay": 0.01},
+        {"params": [p for n, p in base_model.named_parameters()
+                    if any(nd in n for nd in no_decay)],     "weight_decay": 0.0},
+    ]
+    optimizer    = AdamW(optimizer_grouped_parameters, lr=LR)
     scheduler    = get_cosine_schedule_with_warmup(
         optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
     )
@@ -261,7 +269,7 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(all_texts, all_labels)):
             loss.backward()
             total_loss += loss.item() * GRAD_ACCUM
             if (step + 1) % GRAD_ACCUM == 0:
-                torch.nn.utils.clip_grad_norm_(base_model.parameters(), 1.0)
+                torch.nn.utils.clip_grad_norm_(base_model.parameters(), 5.0)
                 optimizer.step()
                 scheduler.step()
                 optimizer.zero_grad()
