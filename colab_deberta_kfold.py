@@ -1,23 +1,35 @@
 """
 DeBERTa-v3-large K-Fold Fine-tuning（Google Colab 版）
 =====================================================
-在 Colab 執行前，先跑以下安裝 cell：
+【第一次使用】在 Colab 執行以下 cells：
 
+  # Cell 1：掛載 Google Drive（防止斷線後資料消失）
+  from google.colab import drive
+  drive.mount('/content/drive')
+
+  # Cell 2：安裝與複製程式
   !git clone https://github.com/eric20041027/Kaggle_medical_competition.git
   %cd Kaggle_medical_competition
   !pip install -q transformers torch scikit-learn pandas numpy tqdm sentencepiece protobuf
 
-完成後直接執行本檔案：
+  # Cell 3：開始訓練
   !python colab_deberta_kfold.py
 
-訓練完成後下載結果：
+  # Cell 4：訓練完成後下載（或直接從 Drive 取檔）
   from google.colab import files
   files.download('outputs/colab_deberta/test_probs_deberta.npy')
   files.download('outputs/colab_deberta/oof_probs_deberta.npy')
-  files.download('outputs/colab_deberta/submission_deberta.csv')
+
+【斷線後重跑】已完成的 fold checkpoint 存在 Drive，重連後執行：
+  from google.colab import drive
+  drive.mount('/content/drive')
+  !git clone https://github.com/eric20041027/Kaggle_medical_competition.git
+  %cd Kaggle_medical_competition
+  !pip install -q transformers torch scikit-learn pandas numpy tqdm sentencepiece protobuf
+  !python colab_deberta_kfold.py   # 自動跳過已完成的 fold
 
 注意：DeBERTa-v3-large 在 Colab 免費 T4 (16GB) 上可運行，
-      若出現 CUDA OOM 可將 BATCH_SIZE 改為 4。
+      若出現 CUDA OOM 可將 BATCH_SIZE 改為 2（GRAD_ACCUM 改為 32）。
 """
 
 import os, warnings, gc
@@ -40,12 +52,17 @@ from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
-# ── Colab 路徑（資料從 git clone 取得）──────────────────────────
+# ── Colab 路徑 ────────────────────────────────────────────────────
+# 輸出同步到 Google Drive，防止斷線後資料遺失
 REPO_DIR    = "."
 TRAIN_PATH  = os.path.join(REPO_DIR, "kaggle_trainset.csv")
 TEST_PATH   = os.path.join(REPO_DIR, "kaggle_testset.csv")
 SUBMIT_PATH = os.path.join(REPO_DIR, "kaggle_testset_submission.csv")
-OUTPUT_DIR  = "outputs/colab_deberta"
+
+_DRIVE_DIR = "/content/drive/MyDrive/kaggle_deberta"
+_LOCAL_DIR = "outputs/colab_deberta"
+# Drive 已掛載就存到 Drive，否則只存本地
+OUTPUT_DIR = _DRIVE_DIR if os.path.exists("/content/drive/MyDrive") else _LOCAL_DIR
 
 DEVICE  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 N_GPUS  = torch.cuda.device_count()
@@ -138,8 +155,24 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 test_ds     = MedicalDataset(test_texts, None, tokenizer)
 test_loader = DataLoader(test_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True)
 
-oof_probs  = np.zeros((len(all_texts), 5))
-test_probs = np.zeros((len(test_texts), 5))
+# 斷點續訓：若 Drive 上已有部分結果，直接載入
+_oof_path  = os.path.join(OUTPUT_DIR, "oof_probs_deberta.npy")
+_test_path = os.path.join(OUTPUT_DIR, "test_probs_deberta.npy")
+_done_path = os.path.join(OUTPUT_DIR, "completed_folds.txt")
+
+if os.path.exists(_oof_path) and os.path.exists(_test_path):
+    oof_probs  = np.load(_oof_path)
+    test_probs = np.load(_test_path)
+    print(f"  ✓ 載入上次中斷的部分結果")
+else:
+    oof_probs  = np.zeros((len(all_texts), 5))
+    test_probs = np.zeros((len(test_texts), 5))
+
+completed_folds = set()
+if os.path.exists(_done_path):
+    with open(_done_path) as f:
+        completed_folds = {int(l.strip()) for l in f if l.strip()}
+    print(f"  ✓ 已完成 fold: {sorted(completed_folds)}，跳過重跑")
 
 skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=SEED)
 
@@ -170,6 +203,10 @@ def get_probs(model, loader, desc=""):
 
 
 for fold, (train_idx, val_idx) in enumerate(skf.split(all_texts, all_labels)):
+    if fold in completed_folds:
+        print(f"\n  [SKIP] Fold {fold+1} 已完成，跳過")
+        continue
+
     print(f"\n{'='*60}")
     print(f"  FOLD {fold+1}/{N_FOLDS}  |  Train: {len(train_idx)}  Val: {len(val_idx)}")
     print(f"{'='*60}")
@@ -255,6 +292,13 @@ for fold, (train_idx, val_idx) in enumerate(skf.split(all_texts, all_labels)):
     del train_ds, val_ds, train_loader, val_loader
     torch.cuda.empty_cache()
     gc.collect()
+
+    # 每完成一個 fold 立即存到 Drive，防止斷線損失進度
+    np.save(_oof_path,  oof_probs)
+    np.save(_test_path, test_probs)
+    with open(_done_path, "a") as f:
+        f.write(f"{fold}\n")
+    completed_folds.add(fold)
     print(f"  Fold {fold+1} 完成，GPU 記憶體已釋放")
 
 # ── 最終結果 ──────────────────────────────────────────────────────
