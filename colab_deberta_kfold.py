@@ -82,7 +82,7 @@ EPOCHS       = 8
 LR           = 5e-6
 WARMUP_RATIO = 0.10
 LABEL_SMOOTH = 0.1
-N_FOLDS      = 3
+N_FOLDS      = 2          # 免費 Colab 4h20m 限制：3fold≈4.5h，2fold≈3h 安全
 PATIENCE     = 3
 SEED         = 42
 
