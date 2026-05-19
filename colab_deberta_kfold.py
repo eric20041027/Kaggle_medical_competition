@@ -203,7 +203,7 @@ def get_probs(model, loader, desc=""):
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=USE_BF16):
             logits = model(input_ids=ids, attention_mask=mask).logits
         probs = torch.softmax(logits, dim=-1)
-        all_probs.append(probs.cpu().numpy())
+        all_probs.append(probs.float().cpu().numpy())
     return np.vstack(all_probs)
 
 
