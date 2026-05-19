@@ -66,7 +66,7 @@ OUTPUT_DIR = _DRIVE_DIR if os.path.exists("/content/drive/MyDrive") else _LOCAL_
 
 DEVICE  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 N_GPUS  = torch.cuda.device_count()
-USE_AMP = torch.cuda.is_available()
+USE_AMP = False  # DeBERTa-v3 disentangled attention produces FP16 grads, incompatible with GradScaler
 print(f"Device: {DEVICE}  |  GPUs: {N_GPUS}  |  AMP: {USE_AMP}")
 if torch.cuda.is_available():
     for i in range(N_GPUS):
