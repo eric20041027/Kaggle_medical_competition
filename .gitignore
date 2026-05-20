@@ -1,9 +1,11 @@
-# Python 虛擬環境
+# Python 虛擬環境（Windows venv 路徑，大寫開頭）
 Include/
 Lib/
 Scripts/
 share/
 pyvenv.cfg
+# 明確保留 scripts/ 專案資料夾（macOS 大小寫不敏感會誤 match Scripts/）
+!scripts/
 
 # Python cache
 __pycache__/
