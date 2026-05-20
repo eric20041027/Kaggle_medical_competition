@@ -59,9 +59,11 @@ print(f"資料目錄: {DATA_DIR}")
 # ── 環境偵測 ──────────────────────────────────────────────
 DEVICE   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 N_GPUS   = torch.cuda.device_count()
-USE_BF16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-USE_AMP  = torch.cuda.is_available() and not USE_BF16
-print(f"Device: {DEVICE}  |  GPUs: {N_GPUS}  |  BF16: {USE_BF16}  |  FP16: {USE_AMP}")
+# DeBERTa-v3-large 的 Disentangled Attention 在 FP16 下會 overflow → loss=nan
+# 強制 float32 訓練，犧牲一點速度換穩定性
+USE_BF16 = False
+USE_AMP  = False
+print(f"Device: {DEVICE}  |  GPUs: {N_GPUS}  |  BF16: {USE_BF16}  |  FP16: {USE_AMP} (DeBERTa 強制 float32)")
 for i in range(N_GPUS):
     mem = torch.cuda.get_device_properties(i).total_memory / 1e9
     print(f"  GPU {i}: {torch.cuda.get_device_name(i)}  ({mem:.1f} GB)")
@@ -231,7 +233,7 @@ loss_fn = RDropLoss(weight=class_weights, alpha=RDROP_ALPHA,
 
 total_steps  = (len(tr_ld) // GRAD_ACCUM) * EPOCHS
 warmup_steps = int(total_steps * WARMUP_RATIO)
-optimizer    = AdamW(base.parameters(), lr=LR, weight_decay=0.01)
+optimizer    = AdamW(base.parameters(), lr=LR, weight_decay=0.01, eps=1e-6)
 scheduler    = get_cosine_schedule_with_warmup(
     optimizer, num_warmup_steps=warmup_steps, num_training_steps=total_steps
 )
