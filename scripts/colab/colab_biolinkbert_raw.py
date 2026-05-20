@@ -21,7 +21,7 @@ BioLinkBERT-large + FGM + 原始資料（Colab 版）
   !pip install -q transformers torch scikit-learn pandas numpy tqdm
 
   # Cell 3
-  !python colab_biolinkbert_raw.py
+  !python scripts/colab/colab_biolinkbert_raw.py
 
   # Cell 4
   from google.colab import files
