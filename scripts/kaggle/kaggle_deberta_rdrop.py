@@ -70,10 +70,10 @@ for i in range(N_GPUS):
 
 # ── 超參數 ────────────────────────────────────────────────
 MODEL_NAME    = "microsoft/deberta-v3-large"
-MAX_LEN       = 512
+MAX_LEN       = 384  # 資料平均 163-199 詞，384 token 覆蓋 75%+ 文本，比 512 快 ~30%
 BATCH_SIZE    = 4 if N_GPUS <= 1 else 8     # DeBERTa-v3-large 比 BERT 佔更多記憶體
 GRAD_ACCUM    = 16 if N_GPUS <= 1 else 8    # effective batch = 64
-EPOCHS        = 10
+EPOCHS        = 8
 LR            = 6e-6
 WARMUP_RATIO  = 0.20
 LABEL_SMOOTH  = 0.1
